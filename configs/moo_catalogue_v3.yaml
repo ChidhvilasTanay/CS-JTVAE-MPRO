@@ -1,0 +1,19 @@
+# MOO algorithm catalogue: compare optimisers on one frozen pipeline, swapping
+# only the optimiser. Reproduce with:  python run.py moo-catalogue
+#
+# Metric: hypervolume of each algorithm's final non-dominated front (res.F) and
+# of the accumulated feasible set (analog-yield view). The comparison runs on
+# the 15 productive anchors (each with >=15 unique analogs at full budget),
+# with 3 seeds per (algorithm, anchor) for the significance test.
+
+pipeline_config: configs/nsga_v3_aug.yaml   # frozen model, checkpoints, 4 core objectives
+
+catalogue:
+  algos: [NSGA2, NSGA3, CTAEA, SMSEMOA, SPEA2, RVEA]
+  anchor_indices: [3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19]
+  seeds: 3                 # seeds per (algorithm, anchor)
+  pop_size: 20
+  generations: 10
+  max_attempts: 500        # scorer assembly attempts (uniform across optimisers)
+  scorer_path: null        # null -> checkpoints_full_v3_aug/scorer.pth
+  out: results/moo_catalogue_v3.csv

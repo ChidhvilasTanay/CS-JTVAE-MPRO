@@ -1,0 +1,47 @@
+# Frozen 4-objective pipeline used by the MOO catalogue (and as a max-potency
+# baseline generation config). Same 60x30 budget and the top-20 anchors by IC50.
+seed: 42
+
+dataset:
+  csv_path: data/covid_moonshot_augmented_v3.csv
+  val_fraction: 0.1
+
+model:
+  latent_dim: 256
+  emb_dim: 256
+  encoder_layers: 3
+  decoder_layers: 4
+  n_heads: 4
+  max_tree_len: 100
+
+bioactivity:
+  n_members: 5
+  hidden_dim: 256
+  dropout: 0.2
+
+nsga:
+  top_k: 20
+  pop_size: 60
+  generations: 30
+  radius: 0.5
+  sbx_eta: 15
+  pm_eta: 20
+  temperature: 0.8
+  pot_floor_abs: 0.40
+  pot_floor_rel: 0.65
+  sa_floor_base: 4.0
+  sa_floor_rel_delta: 0.3
+  tanimoto_min: 0.20
+  uncertainty_global: 0.50
+  uncertainty_margin: 1.30
+  scorer_max_attempts: 2000
+
+composite:
+  qed: 0.50
+  sa: 0.15
+  warhead: 0.20
+  potency: 0.15
+
+paths:
+  checkpoint_dir: checkpoints_full_v3_aug
+  output_csv: data/analogs_v3.csv

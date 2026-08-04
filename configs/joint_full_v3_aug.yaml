@@ -1,0 +1,31 @@
+# v3 augmented scorer training (train-scorer). Identical to joint_full_v2.yaml
+# EXCEPT csv_path (augmented) and checkpoint_dir (v3). Phase-A only (joint_epochs 0),
+# so the v3 encoder stays frozen during scorer training, as in v2.
+seed: 42
+
+dataset:
+  csv_path: data/covid_moonshot_augmented_v3.csv
+  val_fraction: 0.1
+
+model:
+  latent_dim: 256
+  emb_dim: 256
+  encoder_layers: 3
+  decoder_layers: 4
+  n_heads: 4
+  max_tree_len: 100
+
+joint:
+  warmup_epochs: 5
+  joint_epochs: 0
+  scorer_lr: 5.0e-4
+  batch_size: 2   # v3: 16 OOM'd, 4 hit a cublas crash at epoch 3 on the 8GB GPU.
+                  # 2 for headroom; scorer loss is batch-size-invariant so results are unchanged.
+  encoder_lr: 1.0e-5
+  lambda_recon: 1.0
+  beta_kl: 0.1
+  patience: 8
+  val_fraction: 0.1
+
+paths:
+  checkpoint_dir: checkpoints_full_v3_aug

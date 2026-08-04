@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated paper via the Zenodo record below."
+title: "Chemotype-Symmetric Junction-Tree VAE for SARS-CoV-2 Mpro Inhibitor Design"
+type: software
+authors:
+  - given-names: "M. Chidhvilas"
+    family-names: "Tanay"
+license: MIT
+doi: "10.5281/zenodo.21364056"
+url: "https://doi.org/10.5281/zenodo.21364056"
+date-released: "2026-07-15"

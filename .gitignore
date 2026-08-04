@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Trained weights are hosted on Zenodo (see README)
+checkpoints*/
+*.pth
+
+# Generated data, outputs, and logs: keep the directories, ignore their contents
+data/*
+!data/.gitkeep
+figures/*
+!figures/.gitkeep
+results/*
+!results/.gitkeep
+logs/*
+!logs/.gitkeep

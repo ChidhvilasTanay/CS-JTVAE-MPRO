@@ -1,0 +1,58 @@
+# v3 SIX-objective, many-objective NSGA-III. All six design criteria are now
+# soft objectives traded off on one Pareto front, NO post-hoc filters and NO
+# hard reversibility/logP constraints:
+#   1 QED (no alerts)  2 SA  3 warhead retention  4 potency
+#   5 logP desirability (lean)  6 genotoxicity/reversibility desirability
+# NSGA-III (reference directions) handles 6 objectives without the dominance
+# collapse that cripples NSGA-II past ~4-5 objectives. The res.opt front is the
+# reported set. Same frozen v3 model. Writes NEW files only; nothing touched.
+seed: 42
+
+dataset:
+  csv_path: data/covid_moonshot_augmented_v3.csv
+  val_fraction: 0.1
+
+model:
+  latent_dim: 256
+  emb_dim: 256
+  encoder_layers: 3
+  decoder_layers: 4
+  n_heads: 4
+  max_tree_len: 100
+
+bioactivity:
+  n_members: 5
+  hidden_dim: 256
+  dropout: 0.2
+
+nsga:
+  top_k: 20
+  pop_size: 60
+  generations: 30
+  radius: 0.5
+  sbx_eta: 15
+  pm_eta: 20
+  temperature: 0.8
+  pot_floor_abs: 0.40
+  pot_floor_rel: 0.65
+  sa_floor_base: 4.0
+  sa_floor_rel_delta: 0.3
+  tanimoto_min: 0.20
+  uncertainty_global: 0.50
+  uncertainty_margin: 1.30
+  scorer_max_attempts: 2000
+  algorithm: NSGA3        # many-objective optimiser (reference directions)
+  use_logp: true          # 5th objective: lipophilicity desirability
+  use_genotox: true       # 6th objective: reversibility/genotoxicity desirability
+  logp_constraint: false  # NOT a constraint -- it is objective 5
+  reversible_only: false  # NOT a constraint -- it is objective 6
+
+composite:
+  qed: 0.50
+  sa: 0.15
+  warhead: 0.20
+  potency: 0.15
+
+paths:
+  checkpoint_dir: checkpoints_full_v3_aug
+  output_csv: data/analogs_v3_6obj_resopt.csv   # informational; run uses --out

@@ -1,0 +1,33 @@
+# v3 augmented JT-VAE (build-vocab + train-jtvae). Identical to jtvae.yaml EXCEPT
+# csv_path (augmented set) and checkpoint_dir (v3). v2 paths are never written.
+seed: 42
+
+dataset:
+  csv_path: data/covid_moonshot_augmented_v3.csv
+  zinc_csv: data/zinc250k.csv
+  val_fraction: 0.1
+
+vocab:
+  min_freq: 2
+  use_prebuilt_vocab: true   # load build-vocab's ZINC-inclusive vocab; do NOT rebuild (drops ZINC)
+
+model:
+  latent_dim: 256
+  emb_dim: 256
+  encoder_layers: 3
+  decoder_layers: 4
+  n_heads: 4
+  max_tree_len: 100
+
+training:
+  batch_size: 64
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  grad_clip: 1.0
+  free_bits: 0.5
+  warmup_epochs: 5
+  epochs: 30
+  patience: 8
+
+paths:
+  checkpoint_dir: checkpoints_full_v3_aug

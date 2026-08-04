@@ -1,0 +1,29 @@
+# v3 augmented bioactivity ensemble (train-bioactivity). Identical to
+# bioactivity_v2.yaml EXCEPT csv_path (augmented) and checkpoint_dir (v3).
+# Trains the 5-member MLP on the v3 frozen encoder's latents over the SAME 2,475
+# labelled molecules (the covalent augmentation carries no label).
+seed: 42
+
+dataset:
+  csv_path: data/covid_moonshot_augmented_v3.csv
+  val_fraction: 0.1
+
+model:
+  latent_dim: 256
+  emb_dim: 256
+  encoder_layers: 3
+  decoder_layers: 4
+  n_heads: 4
+  max_tree_len: 100
+
+bioactivity:
+  n_members: 5
+  hidden_dim: 256
+  dropout: 0.2
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  batch_size: 32
+  epochs: 50
+
+paths:
+  checkpoint_dir: checkpoints_full_v3_aug
