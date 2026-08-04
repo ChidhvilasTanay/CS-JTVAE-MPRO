@@ -8,6 +8,18 @@ Code for the paper *Chemotype-Symmetric Junction-Tree VAE for SARS-CoV-2 M<sup>p
 
 Each molecule is represented as a junction tree of chemical fragments and encoded into a continuous latent space by a Transformer junction-tree VAE. A latent-conditioned GINEConv attachment scorer reassembles the fused-ring chemistry at decoding time. A constrained six-objective search over the latent space, optimised with NSGA-III, trades off drug-likeness, synthetic accessibility, warhead retention, predicted potency (from a deep-ensemble surrogate), lipophilicity, and warhead reversibility, with an anchor-relative uncertainty cap that rejects candidates far from familiar chemistry. Surviving analogs are verified with ADMET-AI and AutoDock Vina.
 
+## Results
+
+Trained on 20,057 M<sup>pro</sup> inhibitors from the COVID Moonshot dataset and evaluated using the twenty most potent known inhibitors as generation anchors.
+
+- **Faithful reconstruction.** The latent-conditioned assembler reconstructs 19 of the 20 most potent inhibitors faithfully, including the edge-fused ring systems where SMILES-based models most often produce invalid structures.
+- **Warhead-preserving generation.** Across all twenty anchors the framework produces a de-duplicated library of 1,013 analogs and keeps the source covalent warhead in 85% of the parents that carry one.
+- **Safer without erasing the mechanism.** The final Pareto front of 138 analogs is predicted as safe as or safer than each analog's own source inhibitor on four of eight ADMET endpoints, at parity on predicted mutagenicity, with the warhead retained in 94% of the front and docked affinity within AutoDock Vina's scoring error of the parents.
+- **Mutagenicity tracks the warhead class, not covalency.** The reversible nitrile of the marketed inhibitors scores as clean as non-covalent chemistry, while the irreversible chloroacetamide and Michael warheads carry the predicted liability.
+- **Lead candidate.** A dual-warhead analog of nirmatrelvir is predicted safer than the drug itself on seven of eight ADMET endpoints while keeping both warheads.
+
+See the paper (linked above) for the full tables, the per-warhead analysis, and the multi-objective optimiser benchmark.
+
 ## Repository layout
 
 ```
