@@ -46,8 +46,7 @@ from charaka.scorer import GINEAttachmentScorer  # noqa: E402
 from charaka.tokenize import sequence_to_tree, tree_to_sequence  # noqa: E402
 from charaka.vocab import Vocabulary, smiles_to_tree  # noqa: E402
 
-# reuse the pipeline-loading helpers from the generate stage
-from generate import _build_assembler, _build_potency_predictor  # noqa: E402
+from charaka.builders import _build_assembler, _build_potency_predictor  # noqa: E402
 
 from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.operators.crossover.sbx import SBX

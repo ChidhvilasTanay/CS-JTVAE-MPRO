@@ -39,11 +39,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 # Reuse the EXACT pymoo wiring + problem class from the existing module.
 from charaka import nsga as _nsga  # noqa: E402
-from charaka.bioactivity import (  # noqa: E402
-    BioactivityEnsemble,
-    POTENCY_CENTRE,
-    POTENCY_SLOPE,
-)
+from charaka.bioactivity import BioactivityEnsemble  # noqa: E402
+from charaka.builders import _build_assembler, _build_potency_predictor  # noqa: E402
 from charaka.data import load_moonshot, split  # noqa: E402
 from charaka.model import JTreeDecoder, JTreeEncoder, JTreeVAE  # noqa: E402
 from charaka.nsga import NSGAConfig, build_anchor, make_decoder_evaluator  # noqa: E402
@@ -52,9 +49,8 @@ from charaka.objectives import (  # noqa: E402
     composite,
     detect_warheads,
 )
-from charaka.scorer import GINEAttachmentScorer, assemble_with_scorer  # noqa: E402
+from charaka.scorer import GINEAttachmentScorer  # noqa: E402
 from charaka.tokenize import sequence_to_tree, tree_to_sequence  # noqa: E402
-from charaka.assemble import assemble_tree  # noqa: E402
 from charaka.vocab import Vocabulary, smiles_to_tree  # noqa: E402
 
 # The script writes only its own *_resopt.csv / *_summary.csv outputs; guard
@@ -85,51 +81,6 @@ class _Progress(Callback):
             f"feasible_so_far={len(self.problem.feasible):>4}  "
             f"+{time.time() - self.t0:5.0f}s"
         )
-
-
-# --- pipeline builders: the latent-space potency predictor and the
-#     scorer-guided assembler --------------------------------------------
-def _build_potency_predictor(encoder, ensemble, vocab, max_len, device):
-    def predict(smi):
-        result = smiles_to_tree(smi)
-        if result is None:
-            return None, 0.5, 0.0
-        cs, edges, _ = result
-        seq = torch.tensor(
-            tree_to_sequence(cs, edges, vocab, max_len),
-            dtype=torch.long, device=device,
-        ).unsqueeze(0)
-        encoder.eval()
-        with torch.no_grad():
-            _, mu, _ = encoder(seq)
-            pred, std = ensemble(mu)
-        pred_val = float(pred.item())
-        norm = float(torch.sigmoid(-(pred - POTENCY_CENTRE) * POTENCY_SLOPE).item())
-        return pred_val, norm, float(std.item())
-
-    return predict
-
-
-def _build_assembler(scorer, vocab, device, max_attempts, use_scorer=True):
-    def _finalise(rwmol):
-        try:
-            Chem.SanitizeMol(rwmol)
-            smi = Chem.MolToSmiles(rwmol, canonical=True, isomericSmiles=True)
-            return smi if Chem.MolFromSmiles(smi) is not None else None
-        except Exception:
-            return None
-
-    def assemble(cs, edges, z=None):
-        if use_scorer and z is not None:
-            out = assemble_with_scorer(
-                cs, edges, scorer, z, device,
-                max_attempts=max_attempts, finaliser=_finalise,
-            )
-            if out is not None:
-                return out
-        return assemble_tree(cs, edges)
-
-    return assemble
 
 
 def _run_capture(anchor, decode_fn, cfg, seed, label, t0):
