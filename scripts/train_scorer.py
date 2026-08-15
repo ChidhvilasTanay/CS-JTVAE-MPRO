@@ -119,8 +119,8 @@ def build_scorer_dataset(df, vocab: Vocabulary, max_len: int) -> List:
         result = smiles_to_tree(smi)
         if result is None:
             continue
-        cs, _, _ = result
-        token_seq = tree_to_sequence(cs, [], vocab, max_len)
+        cs, edges_real, _ = result
+        token_seq = tree_to_sequence(cs, edges_real, vocab, max_len)
 
         cluster_info = []
         ok = True
