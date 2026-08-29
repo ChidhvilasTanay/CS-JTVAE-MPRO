@@ -27,6 +27,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Set
 
+import multiprocessing as mp
+import os
+
 import numpy as np
 import torch
 from rdkit import Chem
@@ -88,6 +91,8 @@ class NSGAConfig:
     reversible_only: bool = False  # hard constraint: reject candidates carrying an irreversible warhead
     warhead_weighting: bool = False  # v3.1: genotoxicity-weighted warhead term (steer to reversible)
     warhead_floor: float = 0.5  # min warhead score for a covalent anchor's analog to be feasible
+    n_jobs: int = 1  # >1 spreads each generation's decode+score across processes
+                     # (fork/Linux; serial fallback where fork is unavailable)
 
 
 @dataclass
@@ -191,6 +196,7 @@ class LatentProblem(Problem):
         self.uncertainty_cap = uncertainty_cap(anchor, cfg)
         self.feasible: List[CandidateEval] = []
         self.n_uncertainty_dropped = 0
+        self._pool = None
 
         n_var = len(anchor.mu)
         super().__init__(
@@ -202,65 +208,106 @@ class LatentProblem(Problem):
             xu=anchor.mu + cfg.radius,
         )
 
+    def _score_one(self, x):
+        """Decode + score one latent vector. Pure: mutates no shared state, so
+        it runs identically in-process or in a fork pool worker. Returns
+        ``(f_row, g_row, feasible_eval_or_None, uncertainty_dropped)``.
+        """
+        n_g = (5 + (1 if self.cfg.logp_constraint else 0)
+                 + (1 if self.cfg.reversible_only else 0))
+        n_obj = 4 + (1 if self.cfg.use_logp else 0) + (1 if self.cfg.use_genotox else 0)
+        r = self.decode_fn(x, self.anchor)
+        if not r.valid:
+            return [0.0] * n_obj, [1.0] * n_g, None, False
+
+        pot = r.potency if r.potency is not None else 0.0
+        obj = [-r.qed_na, -r.sa_norm, -r.warhead, -pot]
+        if self.cfg.use_logp:
+            ls = (logp_relative_score(r.cand_mol, self.anchor.logp)
+                  if self.cfg.logp_relative else logp_score(r.cand_mol))
+            obj.append(-ls)
+        if self.cfg.use_genotox:
+            obj.append(-genotox_score(r.cand_mol))
+
+        g_wh = (self.cfg.warhead_floor - r.warhead) if self.anchor.has_warheads else -1.0
+        g_sa = r.sa_raw - self.sa_ceiling
+        g_pot = (
+            self.pot_floor - pot
+            if self.anchor.potency is not None
+            else -1.0
+        )
+        g_tan = self.cfg.tanimoto_min - r.tanimoto
+        g_unc = r.pred_std - self.uncertainty_cap
+        g = [g_wh, g_sa, g_pot, g_tan, g_unc]
+        # logP constraint: analog must not be greasier than parent (+margin)
+        g_logp = (mol_logp(r.cand_mol) - (self.anchor.logp + self.cfg.logp_margin)
+                  if self.cfg.logp_constraint else None)
+        if g_logp is not None:
+            g.append(g_logp)
+        # reversibility constraint: reject any candidate carrying an
+        # irreversible warhead (Michael/chloroacetamide/aldehyde/epoxide)
+        g_rev = None
+        if self.cfg.reversible_only:
+            g_rev = 1.0 if _has_irreversible(detect_warheads(r.cand_mol)) else -1.0
+            g.append(g_rev)
+
+        within_others = (
+            g_wh <= 0 and g_sa <= 0 and g_pot <= 0 and g_tan <= 0
+            and (g_logp is None or g_logp <= 0)
+            and (g_rev is None or g_rev <= 0)
+        )
+        feasible = None
+        dropped = bool(within_others and g_unc > 0)
+        if within_others and g_unc <= 0:
+            r.x = x.copy()
+            feasible = r
+        return obj, g, feasible, dropped
+
+    def _use_parallel(self) -> bool:
+        # fork lets workers inherit the already-loaded model with no pickling;
+        # where fork is unavailable (native Windows) fall back to serial.
+        return (getattr(self.cfg, "n_jobs", 1) or 1) > 1 and hasattr(os, "fork")
+
+    def _map(self, xs):
+        """Score a whole generation, serially or across a persistent fork pool."""
+        if self._use_parallel():
+            global _ACTIVE_PROBLEM
+            _ACTIVE_PROBLEM = self
+            if self._pool is None:
+                self._pool = mp.get_context("fork").Pool(self.cfg.n_jobs)
+            return self._pool.map(_par_score_one, xs)
+        return [self._score_one(x) for x in xs]
+
     def _evaluate(self, X, out, *args, **kwargs):
         f_rows: List[List[float]] = []
         g_rows: List[List[float]] = []
-        for x in X:
-            n_g = (5 + (1 if self.cfg.logp_constraint else 0)
-                     + (1 if self.cfg.reversible_only else 0))
-            n_obj = 4 + (1 if self.cfg.use_logp else 0) + (1 if self.cfg.use_genotox else 0)
-            r = self.decode_fn(x, self.anchor)
-            if not r.valid:
-                f_rows.append([0.0] * n_obj)
-                g_rows.append([1.0] * n_g)
-                continue
-
-            pot = r.potency if r.potency is not None else 0.0
-            obj = [-r.qed_na, -r.sa_norm, -r.warhead, -pot]
-            if self.cfg.use_logp:
-                ls = (logp_relative_score(r.cand_mol, self.anchor.logp)
-                      if self.cfg.logp_relative else logp_score(r.cand_mol))
-                obj.append(-ls)
-            if self.cfg.use_genotox:
-                obj.append(-genotox_score(r.cand_mol))
-            f_rows.append(obj)
-
-            g_wh = (self.cfg.warhead_floor - r.warhead) if self.anchor.has_warheads else -1.0
-            g_sa = r.sa_raw - self.sa_ceiling
-            g_pot = (
-                self.pot_floor - pot
-                if self.anchor.potency is not None
-                else -1.0
-            )
-            g_tan = self.cfg.tanimoto_min - r.tanimoto
-            g_unc = r.pred_std - self.uncertainty_cap
-            g = [g_wh, g_sa, g_pot, g_tan, g_unc]
-            # logP constraint: analog must not be greasier than parent (+margin)
-            g_logp = (mol_logp(r.cand_mol) - (self.anchor.logp + self.cfg.logp_margin)
-                      if self.cfg.logp_constraint else None)
-            if g_logp is not None:
-                g.append(g_logp)
-            # reversibility constraint: reject any candidate carrying an
-            # irreversible warhead (Michael/chloroacetamide/aldehyde/epoxide)
-            g_rev = None
-            if self.cfg.reversible_only:
-                g_rev = 1.0 if _has_irreversible(detect_warheads(r.cand_mol)) else -1.0
-                g.append(g_rev)
-            g_rows.append(g)
-
-            within_others = (
-                g_wh <= 0 and g_sa <= 0 and g_pot <= 0 and g_tan <= 0
-                and (g_logp is None or g_logp <= 0)
-                and (g_rev is None or g_rev <= 0)
-            )
-            if within_others and g_unc > 0:
+        for f_row, g_row, feasible, dropped in self._map([x for x in X]):
+            f_rows.append(f_row)
+            g_rows.append(g_row)
+            if dropped:
                 self.n_uncertainty_dropped += 1
-            if within_others and g_unc <= 0:
-                r.x = x.copy()
-                self.feasible.append(r)
-
+            if feasible is not None:
+                self.feasible.append(feasible)
         out["F"] = np.array(f_rows)
         out["G"] = np.array(g_rows)
+
+    def close(self) -> None:
+        """Release the worker pool, if one was started."""
+        if self._pool is not None:
+            self._pool.close()
+            self._pool.join()
+            self._pool = None
+
+
+# Set to the active problem just before its fork pool is created, so pool
+# workers (fork children) reach it without pickling the model / decode_fn.
+# The caller owns the pool's lifetime and must call ``problem.close()`` when
+# the search finishes (see the driver in the serving layer).
+_ACTIVE_PROBLEM: Optional["LatentProblem"] = None
+
+
+def _par_score_one(x):
+    return _ACTIVE_PROBLEM._score_one(x)
 
 
 def make_decoder_evaluator(
