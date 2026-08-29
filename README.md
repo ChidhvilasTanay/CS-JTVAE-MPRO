@@ -53,18 +53,18 @@ Python 3.10 or newer. A CUDA GPU is needed for the training and generation stage
 
 ## Data and trained weights
 
-The processed dataset and the trained weights (JT-VAE, attachment scorer, and bioactivity ensemble) are archived on Zenodo:
+The trained weights (JT-VAE, attachment scorer, and bioactivity ensemble) are committed in this repository under `checkpoints_full_v3_aug/`, so a fresh clone is ready to run. They are also archived on Zenodo with a citable DOI:
 
 https://doi.org/10.5281/zenodo.21364056
 
-Download and place them at the repository root as:
+The processed and augmented dataset is not committed here; download it from the same Zenodo record and place it at the repository root as `data/`. The weights already sit at the root as:
 
 ```
-data/                       processed and augmented datasets, plus the analog result CSVs
 checkpoints_full_v3_aug/
   vocab.txt
   jtvae_best.pth            JT-VAE encoder and decoder
-  scorer.pth                GINEConv attachment scorer
+  encoder_joint.pth         jointly-trained encoder
+  scorer_joint.pth          GINEConv attachment scorer
   bioactivity/member_0..4.pth
   bioactivity_summary.yaml
 ```

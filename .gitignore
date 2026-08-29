@@ -23,9 +23,13 @@ env/
 .DS_Store
 Thumbs.db
 
-# Trained weights are hosted on Zenodo (see README)
+# Trained weights: archived on Zenodo (DOI in README) AND committed here (frozen
+# v3 bundle, ~38MB) so a clone is self-contained. Ignore stray checkpoints/weights
+# elsewhere, but keep the published bundle tracked.
 checkpoints*/
 *.pth
+!checkpoints_full_v3_aug/
+!checkpoints_full_v3_aug/**
 
 # Generated data, outputs, and logs: keep the directories, ignore their contents
 data/*
