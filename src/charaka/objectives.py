@@ -28,6 +28,8 @@ from rdkit.Chem import Crippen
 from rdkit.Chem import QED as _QED
 from rdkit.Chem import RDConfig
 
+from . import catalogues as _catalogues
+
 
 _SA_AVAILABLE = False
 try:
@@ -68,6 +70,50 @@ _WARHEAD_PATTERNS = [
 ]
 
 
+# --------------------------------------------------------------------------
+# Selectable catalogues (additive; the published one stays the default).
+#
+# The catalogue is used inside the search loop, by the warhead-retention
+# objective, the warhead floor g1, and the reversibility objective, so changing
+# it changes the search. "published" is therefore frozen: with no call to
+# ``set_catalogue`` every result reproduces exactly as before. See
+# ``charaka.catalogues`` for what "v2" corrects and why.
+# --------------------------------------------------------------------------
+_CATALOGUES = {
+    # name -> (patterns, nitrile-activation SMARTS or None)
+    "published": (WARHEAD_SMARTS, None),
+    "v2":        (_catalogues.WARHEAD_SMARTS_V2, _catalogues.NITRILE_ACTIVATED),
+}
+_COMPILED_CATALOGUES = {
+    name: [(n, Chem.MolFromSmarts(s)) for n, s in pats]
+    for name, (pats, _) in _CATALOGUES.items()
+}
+_NITRILE_PATTERNS = {
+    name: (Chem.MolFromSmarts(rule) if rule else None)
+    for name, (_, rule) in _CATALOGUES.items()
+}
+_ACTIVE_CATALOGUE = "published"
+
+
+def set_catalogue(name: str) -> str:
+    """Select the warhead catalogue for this process. Returns the new name.
+
+    Affects every consumer of :func:`detect_warheads`, including the search
+    objectives and :func:`genotox_score`. Process-global by design so that a
+    caller sets it once at start-up rather than threading it through pymoo.
+    """
+    global _ACTIVE_CATALOGUE
+    if name not in _CATALOGUES:
+        raise KeyError(f"unknown catalogue {name!r}; have {sorted(_CATALOGUES)}")
+    _ACTIVE_CATALOGUE = name
+    return _ACTIVE_CATALOGUE
+
+
+def active_catalogue() -> str:
+    """Name of the catalogue currently in force."""
+    return _ACTIVE_CATALOGUE
+
+
 def qed_no_alerts(mol: Chem.Mol) -> float:
     """Geometric mean of QED's seven non-ALERTS desirability functions."""
     if mol is None:
@@ -105,15 +151,27 @@ def sa_norm(mol: Chem.Mol) -> float:
     return max(0.0, min(1.0, (10.0 - sa_raw(mol)) / 9.0))
 
 
-def detect_warheads(mol: Chem.Mol) -> Set[str]:
-    """Return the set of warhead patterns matched in ``mol``."""
+def detect_warheads(mol: Chem.Mol, catalogue: Optional[str] = None) -> Set[str]:
+    """Return the set of warhead patterns matched in ``mol``.
+
+    ``catalogue`` overrides the process-wide selection for one call; by default
+    the active catalogue is used, which is ``"published"`` unless
+    :func:`set_catalogue` was called.
+    """
     if mol is None:
         return set()
-    return {
-        name
-        for name, pattern in _WARHEAD_PATTERNS
+    name = catalogue or _ACTIVE_CATALOGUE
+    names = {
+        n
+        for n, pattern in _COMPILED_CATALOGUES[name]
         if pattern is not None and mol.HasSubstructMatch(pattern)
     }
+    # A nitrile is only a covalent warhead when it is activated; catalogues that
+    # define a rule drop the ones that are merely decoration.
+    rule = _NITRILE_PATTERNS[name]
+    if rule is not None and "nitrile" in names and not mol.HasSubstructMatch(rule):
+        names.discard("nitrile")
+    return names
 
 
 def mol_logp(mol: Chem.Mol) -> float:
@@ -187,6 +245,18 @@ WARHEAD_SAFETY = {
     "chloroacetamide": 0.20,
 }
 
+# Safety weights per catalogue. v2 adds entries for the classes it can see that
+# the published catalogue cannot; the published ten keep their published values.
+_SAFETY_TABLES = {
+    "published": WARHEAD_SAFETY,
+    "v2":        _catalogues.WARHEAD_SAFETY_V2,
+}
+
+
+def active_warhead_safety() -> dict:
+    """Safety weights matching the active catalogue."""
+    return _SAFETY_TABLES[_ACTIVE_CATALOGUE]
+
 
 def warhead_score_weighted(orig_warheads: Set[str], cand_warheads: Set[str]) -> float:
     """Genotoxicity-weighted warhead desirability (v3.1).
@@ -201,7 +271,7 @@ def warhead_score_weighted(orig_warheads: Set[str], cand_warheads: Set[str]) -> 
         return 1.0
     if not cand_warheads:
         return 0.0
-    return max(WARHEAD_SAFETY.get(w, 0.30) for w in cand_warheads)
+    return max(active_warhead_safety().get(w, 0.30) for w in cand_warheads)
 
 
 def genotox_score(mol: Chem.Mol) -> float:
@@ -216,7 +286,7 @@ def genotox_score(mol: Chem.Mol) -> float:
     whs = detect_warheads(mol)
     if not whs:
         return 1.0
-    return min(WARHEAD_SAFETY.get(w, 0.30) for w in whs)
+    return min(active_warhead_safety().get(w, 0.30) for w in whs)
 
 
 @dataclass
